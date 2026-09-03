@@ -1,39 +1,39 @@
-# Qwen3-235B-A22B on Apple Silicon (MLX 4-bit) —— 消费级机器跑 235B 的完整生命周期
+# Qwen3-235B-A22B on Apple Silicon (MLX 4-bit) — The Full Lifecycle of Running 235B on Consumer Hardware
 
-> Mac Studio(Apple Silicon 大内存机型)上用 MLX 跑 235B MoE 的真实记录:装过、跑过、**最终主动退役**。
-> 这本书的价值在结论:能跑 ≠ 该跑。我们把部署方法和退役原因都写全,帮你在动手前做对决策。
+> A real-world record of running a 235B MoE with MLX on a Mac Studio (large-unified-memory Apple Silicon model): we installed it, we ran it, and **we ultimately retired it by choice**.
+> The value of this book is the conclusion: being able to run it ≠ should run it. We document both the deployment method and the retirement reasons in full, so you can make the right call before you start.
 
-## 配置(当时的形态)
+## Configuration (as it was)
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| 机器 | Mac Studio(Apple Silicon,统一内存需 ≥128GB 级) |
-| 引擎 | MLX(mlx-lm) |
-| 权重 | Qwen3-235B-A22B-Instruct 4-bit(**124GB**) |
-| 服务 | 本地端口 + launchd 托管(`RunAtLoad`+`KeepAlive`) |
-| 定位 | 当时的本地 fallback(后退役) |
+| Machine | Mac Studio (Apple Silicon, unified memory needs to be in the ≥128GB class) |
+| Engine | MLX (mlx-lm) |
+| Weights | Qwen3-235B-A22B-Instruct 4-bit (**124GB**) |
+| Serving | Local port + launchd supervision (`RunAtLoad`+`KeepAlive`) |
+| Role | Local fallback at the time (since retired) |
 
-## 为什么退役(2026-06 决定,一手原因)
+## Why we retired it (decided 2026-06, first-hand reasons)
 
-1. **稳定性不足**:A22B 4-bit 在长会话/连续服务下表现不稳(响应质量与服务可用性波动),作为"兜底"角色恰恰要求最高稳定性——自相矛盾。
-2. **124GB 权重把统一内存吃满**:留给系统+KV+其他应用的余量太薄,机器同时干别的就挤。
-3. **被更合适的形态取代**:一个 122B 级 MoE(激活 10B)在专用推理机上以 int4 稳定服务且带视觉——对比之下 235B-A22B 在 Mac 上"大而不稳",退役是理性选择。
-4. 附带认知:同权重在双机 GB10 上 llama.cpp 也只有 ~11.7 tok/s(社区公开基准口径)(激活 22B 太重,带宽算术过不了 50 tok/s 线,见本系列 GPT-OSS-120B 篇的选型矩阵)——**A22B 这个激活量级在两类硬件上都不是甜区**。
+1. **Insufficient stability**: A22B 4-bit was unstable under long sessions / continuous serving (response quality and service availability fluctuated). A fallback role demands the highest stability of all — a direct contradiction.
+2. **124GB of weights eats the entire unified memory**: the headroom left for the OS + KV cache + other apps was too thin; the machine choked whenever it did anything else at the same time.
+3. **Superseded by a better-fitting shape**: a 122B-class MoE (10B active) served stably at int4 on a dedicated inference box, with vision included — next to that, 235B-A22B on a Mac was "big but shaky," and retiring it was the rational choice.
+4. A side finding: the same weights on dual GB10 with llama.cpp only reach ~11.7 tok/s (per community public benchmark methodology) (22B active is too heavy; the bandwidth arithmetic cannot clear the 50 tok/s line — see the selection matrix in this series' GPT-OSS-120B book). **This A22B activation class is not in the sweet spot on either kind of hardware.**
 
-## 如果你仍想跑(方法仍然有效)
+## If you still want to run it (the method still works)
 
 ```bash
 pip install mlx-lm
-# 4-bit 社区转换版(124GB,下载前确认磁盘与内存)
-mlx_lm.serve --model <235B-A22B-4bit 权重> --port <port>
+# Community 4-bit conversion (124GB — check disk and memory before downloading)
+mlx_lm.serve --model <235B-A22B-4bit weights> --port <port>
 ```
-- launchd 托管建议 `KeepAlive.SuccessfulExit=false`(异常才拉起,避免 kill 毫秒复活的调试噩梦——我们在 8 个服务全 KeepAlive:true 时代吃过"kill 无效"的亏)。
-- 系统重启后 plist 可能损坏(我们经历过一次开机全部 plist 变成损坏 JSON stub 的事故):托管脚本里加配置自愈检查。
+- For launchd supervision, use `KeepAlive.SuccessfulExit=false` (restart only on abnormal exit — avoids the debugging nightmare of processes resurrecting milliseconds after a kill; we learned this the hard way in the era of 8 services all on KeepAlive:true, when kill simply "didn't work").
+- plists can get corrupted after a system reboot (we lived through one incident where every plist turned into a corrupted JSON stub on boot): add a config self-heal check to your supervision script.
 
-## 这本书真正想说的
+## What this book is really about
 
-**大参数 ≠ 正确选择。选型顺序应该是:激活参数量带宽算术(能不能快)→ 稳定性 soak(能不能一直跑)→ 再谈参数规模。**
-Apple Silicon 上更甜的点位见本系列 Qwen3.6-27B 篇(小得多、稳得多、还带视觉);十倍激活量的 235B 没有给我们十倍价值,只给了十倍的运维摩擦。
+**More parameters ≠ the right choice. The selection order should be: active-parameter bandwidth arithmetic (can it be fast) → stability soak (can it keep running) → only then talk about parameter scale.**
+For the sweeter spot on Apple Silicon, see this series' Qwen3.6-27B book (much smaller, much more stable, and it has vision). 10x the active parameters of 235B did not give us 10x the value — only 10x the operational friction.
 
 ---
-*RyanAI Lab · 完整生命周期实录(2026 上半年),更新于 2026-09。*
+*RyanAI Lab · All numbers measured on our resident environment. Updated 2026-09. Issues welcome.*
